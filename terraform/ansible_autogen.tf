@@ -1,8 +1,7 @@
 ############################################
-# Auto-generate all Ansible files from Terraform
+# Auto-generate Ansible files from Terraform values
 ############################################
 
-# ---- Variables for app source (no hardcoding) ----
 variable "app_repo_url" {
   description = "HTTPS URL of your GitHub repo that contains app/v1 and app/v2"
   type        = string
@@ -14,7 +13,6 @@ variable "app_src_version" {
   default     = "app/v1"
 }
 
-# ---- Local paths and file contents ----
 locals {
   ansible_dir = "${path.module}/../ansible"
 
@@ -26,9 +24,9 @@ locals {
     document_root: "/var/www/html"
 
     rds_endpoint: "${aws_db_instance.mysql.address}"
-    db_user: "${aws_db_instance.mysql.username}"
+    db_user: "${var.db_username}"
     db_pass: "${random_password.db_password.result}"
-    db_name: "${aws_db_instance.mysql.db_name}"
+    db_name: "${var.db_name}"
 
     alb_dns_name: "${aws_lb.app.dns_name}"
   YAML
@@ -91,7 +89,6 @@ locals {
         force: yes
 
     - name: Deploy selected version to document root
-        # trailing '/.' preserves hidden files; use /bin/bash for globbing
       ansible.builtin.shell: cp -a /opt/app/{{ app_src_version }}/. {{ document_root }}/
       args:
         executable: /bin/bash
@@ -157,7 +154,7 @@ locals {
   SH
 }
 
-# ---- Ensure ansible directories exist ----
+# Ensure ansible directories exist
 resource "null_resource" "prepare_ansible_dirs" {
   provisioner "local-exec" {
     command = <<-CMD
@@ -168,7 +165,7 @@ resource "null_resource" "prepare_ansible_dirs" {
   }
 }
 
-# ---- Write all Ansible artifacts from live TF values ----
+# Write files
 resource "local_file" "ansible_hosts" {
   depends_on = [null_resource.prepare_ansible_dirs, aws_instance.web]
   filename   = "${local.ansible_dir}/hosts.ini"
