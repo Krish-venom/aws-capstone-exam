@@ -1,0 +1,2 @@
+region     = "us-east-1"
+my_ip_cidr = "3.110.157.51/32"
