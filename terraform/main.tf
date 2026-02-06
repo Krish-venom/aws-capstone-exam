@@ -30,34 +30,6 @@ terraform {
   }
 }
 
-############################################
-# Variables (defaults set per your request)
-############################################
-variable "region"        { type = string  default = "us-east-1" }
-variable "project"       { type = string  default = "streamline" }
-variable "vpc_cidr"      { type = string  default = "10.0.0.0/16" }
-variable "public_subnet_cidrs"  {
-  type    = list(string)
-  default = ["10.0.1.0/24", "10.0.2.0/24"]
-}
-variable "private_subnet_cidrs" {
-  type    = list(string)
-  default = ["10.0.3.0/24", "10.0.4.0/24"]
-}
-# Your Mumbai public IP (/32) for SSH to EC2
-variable "my_ip_cidr"    { type = string  default = "3.110.157.51/32" }
-
-# App lives inside the same repo under app/v1 and app/v2
-variable "app_repo_url"  {
-  type    = string
-  default = "https://github.com/Krish-venom/aws-capstone-exam.git"
-}
-# Controls which version Ansible deploys (can be overridden from Jenkins)
-variable "app_src_version" { type = string default = "app/v1" }
-
-# DB settings (username/dbname); password is generated
-variable "db_username"   { type = string  default = "streamline_admin" }
-variable "db_name"       { type = string  default = "employees" }
 
 ############################################
 # Provider
