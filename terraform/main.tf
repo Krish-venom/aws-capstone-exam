@@ -30,19 +30,21 @@ terraform {
   }
 }
 
-
 ############################################
 # Provider
 ############################################
-provider "aws" { region = var.region }
+provider "aws" {
+  region = var.region
+}
 
 ############################################
 # Data Sources
 ############################################
-data "aws_availability_zones" "available" { state = "available" }
+data "aws_availability_zones" "available" {
+  state = "available"
+}
 
 # Ubuntu 22.04 LTS AMI (Canonical)
-
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -65,12 +67,18 @@ resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
-  tags = { Name = "${var.project}-vpc", Project = var.project }
+  tags = {
+    Name    = "${var.project}-vpc"
+    Project = var.project
+  }
 }
 
 resource "aws_internet_gateway" "igw" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "${var.project}-igw", Project = var.project }
+  tags = {
+    Name    = "${var.project}-igw"
+    Project = var.project
+  }
 }
 
 resource "aws_subnet" "public" {
@@ -98,7 +106,6 @@ resource "aws_subnet" "private" {
   }
 }
 
-
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
@@ -113,7 +120,6 @@ resource "aws_route_table" "public" {
   }
 }
 
-
 resource "aws_route_table_association" "public_assoc" {
   count          = 2
   route_table_id = aws_route_table.public.id
@@ -122,7 +128,10 @@ resource "aws_route_table_association" "public_assoc" {
 
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
-  tags   = { Name = "${var.project}-private-rt", Project = var.project }
+  tags = {
+    Name    = "${var.project}-private-rt"
+    Project = var.project
+  }
 }
 
 resource "aws_route_table_association" "private_assoc" {
@@ -139,9 +148,25 @@ resource "aws_security_group" "alb_sg" {
   name        = "${var.project}-alb-sg"
   description = "ALB security group"
   vpc_id      = aws_vpc.main.id
-  ingress { from_port = 80 to_port = 80 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
-  egress  { from_port = 0  to_port = 0  protocol = "-1"  cidr_blocks = ["0.0.0.0/0"] }
-  tags = { Name = "${var.project}-alb-sg", Project = var.project }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "${var.project}-alb-sg"
+    Project = var.project
+  }
 }
 
 # Web: HTTP 80 from anywhere; SSH 22 only from your IP
@@ -149,10 +174,32 @@ resource "aws_security_group" "web_sg" {
   name        = "${var.project}-web-sg"
   description = "Web servers security group"
   vpc_id      = aws_vpc.main.id
-  ingress { from_port = 80 to_port = 80 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
-  ingress { from_port = 22 to_port = 22 protocol = "tcp" cidr_blocks = [var.my_ip_cidr] }
-  egress  { from_port = 0  to_port = 0  protocol = "-1"  cidr_blocks = ["0.0.0.0/0"] }
-  tags = { Name = "${var.project}-web-sg", Project = var.project }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = [var.my_ip_cidr]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "${var.project}-web-sg"
+    Project = var.project
+  }
 }
 
 # RDS: allow MySQL only from Web SG
@@ -160,8 +207,18 @@ resource "aws_security_group" "rds_sg" {
   name        = "${var.project}-rds-sg"
   description = "RDS security group"
   vpc_id      = aws_vpc.main.id
-  egress { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
-  tags = { Name = "${var.project}-rds-sg", Project = var.project }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name    = "${var.project}-rds-sg"
+    Project = var.project
+  }
 }
 
 resource "aws_security_group_rule" "rds_mysql_ingress" {
@@ -185,7 +242,10 @@ resource "tls_private_key" "ec2" {
 resource "aws_key_pair" "ec2_key" {
   key_name   = "${var.project}-key"
   public_key = tls_private_key.ec2.public_key_openssh
-  tags       = { Name = "${var.project}-key", Project = var.project }
+  tags = {
+    Name    = "${var.project}-key"
+    Project = var.project
+  }
 }
 
 resource "local_file" "private_key_pem" {
@@ -202,7 +262,7 @@ resource "aws_instance" "web" {
   ami                         = data.aws_ami.ubuntu.id
   instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public[count.index].id
-  associate_public_ip_address = true
+  associate_public_ip_on_launch = true
   key_name                    = aws_key_pair.ec2_key.key_name
   vpc_security_group_ids      = [aws_security_group.web_sg.id]
 
@@ -229,7 +289,11 @@ resource "aws_lb" "app" {
   internal           = false
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = [for s in aws_subnet.public : s.id]
-  tags = { Name = "${var.project}-alb", Project = var.project }
+
+  tags = {
+    Name    = "${var.project}-alb"
+    Project = var.project
+  }
 }
 
 resource "aws_lb_target_group" "web_tg" {
@@ -237,6 +301,7 @@ resource "aws_lb_target_group" "web_tg" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
+
   health_check {
     path                = "/"
     matcher             = "200-399"
@@ -245,7 +310,10 @@ resource "aws_lb_target_group" "web_tg" {
     healthy_threshold   = 2
     unhealthy_threshold = 2
   }
-  tags = { Project = var.project }
+
+  tags = {
+    Project = var.project
+  }
 }
 
 resource "aws_lb_target_group_attachment" "attach" {
@@ -259,7 +327,11 @@ resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app.arn
   port              = 80
   protocol          = "HTTP"
-  default_action { type = "forward" target_group_arn = aws_lb_target_group.web_tg.arn }
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.web_tg.arn
+  }
 }
 
 ############################################
@@ -268,7 +340,10 @@ resource "aws_lb_listener" "http" {
 resource "aws_db_subnet_group" "db_subnets" {
   name       = "${var.project}-db-subnets"
   subnet_ids = [for s in aws_subnet.private : s.id]
-  tags       = { Name = "${var.project}-db-subnets", Project = var.project }
+  tags = {
+    Name    = "${var.project}-db-subnets"
+    Project = var.project
+  }
 }
 
 resource "random_password" "db_password" {
@@ -295,13 +370,15 @@ resource "aws_db_instance" "mysql" {
   skip_final_snapshot = true
   deletion_protection = false
 
-  tags = { Name = "${var.project}-mysql", Project = var.project, Tier = "database" }
+  tags = {
+    Name    = "${var.project}-mysql"
+    Project = var.project
+    Tier    = "database"
+  }
 }
 
 ############################################
 # Ansible Autogeneration (no hardcoded values)
-# - Writes inventory, vars, playbook, role, template
-# - Jenkins will run Ansible using these files
 ############################################
 locals {
   ansible_dir = "${path.module}/../ansible"
@@ -443,58 +520,91 @@ resource "null_resource" "prepare_ansible_dirs" {
 
 # Write Ansible files
 resource "local_file" "ansible_hosts" {
-  depends_on = [null_resource.prepare_ansible_dirs, aws_instance.web]
-  filename   = "${local.ansible_dir}/hosts.ini"
-  content    = local.hosts_ini
+  depends_on     = [null_resource.prepare_ansible_dirs, aws_instance.web]
+  filename       = "${local.ansible_dir}/hosts.ini"
+  content        = local.hosts_ini
   file_permission = "0644"
 }
 
 resource "local_file" "ansible_group_vars" {
-  depends_on = [null_resource.prepare_ansible_dirs, aws_db_instance.mysql, aws_lb.app]
-  filename   = "${local.ansible_dir}/group_vars/all.yml"
-  content    = trim(local.group_vars_all)
+  depends_on     = [null_resource.prepare_ansible_dirs, aws_db_instance.mysql, aws_lb.app]
+  filename       = "${local.ansible_dir}/group_vars/all.yml"
+  content        = trim(local.group_vars_all)
   file_permission = "0600"
 }
 
 resource "local_file" "ansible_cfg" {
-  depends_on = [null_resource.prepare_ansible_dirs]
-  filename   = "${local.ansible_dir}/ansible.cfg"
-  content    = trim(local.ansible_cfg)
+  depends_on     = [null_resource.prepare_ansible_dirs]
+  filename       = "${local.ansible_dir}/ansible.cfg"
+  content        = trim(local.ansible_cfg)
   file_permission = "0644"
 }
 
 resource "local_file" "site_yml" {
-  depends_on = [null_resource.prepare_ansible_dirs]
-  filename   = "${local.ansible_dir}/site.yml"
-  content    = trim(local.site_yml)
+  depends_on     = [null_resource.prepare_ansible_dirs]
+  filename       = "${local.ansible_dir}/site.yml"
+  content        = trim(local.site_yml)
   file_permission = "0644"
 }
 
 resource "local_file" "role_tasks_main" {
-  depends_on = [null_resource.prepare_ansible_dirs]
-  filename   = "${local.ansible_dir}/roles/web/tasks/main.yml"
-  content    = trim(local.role_tasks_main)
+  depends_on     = [null_resource.prepare_ansible_dirs]
+  filename       = "${local.ansible_dir}/roles/web/tasks/main.yml"
+  content        = trim(local.role_tasks_main)
   file_permission = "0644"
 }
 
 resource "local_file" "role_template_dbcheck" {
-  depends_on = [null_resource.prepare_ansible_dirs]
-  filename   = "${local.ansible_dir}/roles/web/templates/db_check.php.j2"
-  content    = trim(local.db_check_template)
+  depends_on     = [null_resource.prepare_ansible_dirs]
+  filename       = "${local.ansible_dir}/roles/web/templates/db_check.php.j2"
+  content        = trim(local.db_check_template)
   file_permission = "0644"
 }
 
 ############################################
 # Outputs
 ############################################
-output "vpc_id"           { value = aws_vpc.main.id }
-output "public_subnets"   { value = [for s in aws_subnet.public : s.id] }
-output "private_subnets"  { value = [for s in aws_subnet.private : s.id] }
-output "alb_dns_name"     { value = aws_lb.app.dns_name }
-output "web_public_ips"   { value = [for i in aws_instance.web : i.public_ip] }
-output "rds_endpoint"     { value = aws_db_instance.mysql.address }
-output "db_username"      { value = aws_db_instance.mysql.username }
-output "db_name"          { value = aws_db_instance.mysql.db_name }
-output "db_password"      { value = random_password.db_password.result  sensitive = true }
-output "ec2_key_name"     { value = aws_key_pair.ec2_key.key_name }
-output "private_key_path" { value = local_file.private_key_pem.filename }
+output "vpc_id" {
+  value = aws_vpc.main.id
+}
+
+output "public_subnets" {
+  value = [for s in aws_subnet.public : s.id]
+}
+
+output "private_subnets" {
+  value = [for s in aws_subnet.private : s.id]
+}
+
+output "alb_dns_name" {
+  value = aws_lb.app.dns_name
+}
+
+output "web_public_ips" {
+  value = [for i in aws_instance.web : i.public_ip]
+}
+
+output "rds_endpoint" {
+  value = aws_db_instance.mysql.address
+}
+
+output "db_username" {
+  value = aws_db_instance.mysql.username
+}
+
+output "db_name" {
+  value = aws_db_instance.mysql.db_name
+}
+
+output "db_password" {
+  value     = random_password.db_password.result
+  sensitive = true
+}
+
+output "ec2_key_name" {
+  value = aws_key_pair.ec2_key.key_name
+}
+
+output "private_key_path" {
+  value = local_file.private_key_pem.filename
+}
