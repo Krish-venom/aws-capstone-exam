@@ -15,7 +15,7 @@ pipeline {
    * Environment
    ***************/
   environment {
-    REPO_URL = 'https://github.com/Pugazh529/aws-capstone-exam.git'   // <— your single repo
+    REPO_URL = 'https://github.com/Krish-venom/aws-capstone-exam.git'   // <— your single repo
     INVENTORY_FILE = 'ansible/hosts'
     PLAYBOOK_FILE  = 'ansible/playbook.yml'
     ANSIBLE_HOST_KEY_CHECKING = 'False'
