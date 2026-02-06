@@ -1,2 +1,24 @@
-region     = "us-east-1"
+############################################
+# Deployment Region
+############################################
+region = "us-east-1"
+
+############################################
+# Access Control
+############################################
+# Your public IP (Mumbai) with /32
 my_ip_cidr = "3.110.157.51/32"
+
+############################################
+# Application Repository (same repo; app lives in app/v1 & app/v2)
+############################################
+app_repo_url = "https://github.com/Krish-venom/aws-capstone-exam.git"
+
+# Default deploy v1; switch to app/v2 via Jenkins param or uncomment below
+# app_src_version = "app/v2"
+
+############################################
+# Database (optional overrides)
+############################################
+db_username = "streamline_admin"
+db_name     = "employees"
