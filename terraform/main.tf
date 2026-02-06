@@ -1,18 +1,11 @@
 ############################################
-# Terraform: Full Infra (Single File)
-# - Region: us-east-1
-# - VPC, Subnets, IGW, Routes
-# - SGs (ALB, Web, RDS)
-# - Key Pair (generated)
-# - EC2 x2 (public subnets)
-# - ALB (HTTP 80)
-# - RDS MySQL (private subnets)
-# - Auto-generate Ansible artifacts from live TF outputs
+# main.tf — Full Infra + Ansible Autogen
+# Region: us-east-1 (N. Virginia)
+# Owner: Krishna (Krish-venom)
 ############################################
 
 terraform {
   required_version = ">= 1.5.0"
-
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -38,99 +31,54 @@ terraform {
 }
 
 ############################################
-# Variables (defaults set for your exam)
+# Variables (defaults set per your request)
 ############################################
-variable "region" {
-  description = "AWS region where all resources will be created"
-  type        = string
-  default     = "us-east-1"
+variable "region"        { type = string  default = "us-east-1" }
+variable "project"       { type = string  default = "streamline" }
+variable "vpc_cidr"      { type = string  default = "10.0.0.0/16" }
+variable "public_subnet_cidrs"  {
+  type    = list(string)
+  default = ["10.0.1.0/24", "10.0.2.0/24"]
 }
-
-variable "project" {
-  description = "Project name prefix for tagging AWS resources"
-  type        = string
-  default     = "streamline"
-}
-
-variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
-  type        = string
-  default     = "10.0.0.0/16"
-}
-
-variable "public_subnet_cidrs" {
-  description = "CIDRs for the public subnets across two AZs"
-  type        = list(string)
-  default     = ["10.0.1.0/24", "10.0.2.0/24"]
-}
-
 variable "private_subnet_cidrs" {
-  description = "CIDRs for the private subnets across two AZs"
-  type        = list(string)
-  default     = ["10.0.3.0/24", "10.0.4.0/24"]
+  type    = list(string)
+  default = ["10.0.3.0/24", "10.0.4.0/24"]
 }
-
-variable "my_ip_cidr" {
-  description = "Your machine's public IP with /32 mask to allow SSH access"
-  type        = string
-  default     = "3.110.157.51/32"  # <-- your Mumbai IP
-}
+# Your Mumbai public IP (/32) for SSH to EC2
+variable "my_ip_cidr"    { type = string  default = "3.110.157.51/32" }
 
 # App lives inside the same repo under app/v1 and app/v2
-variable "app_repo_url" {
-  description = "GitHub URL of your application repository containing app/v1 and app/v2"
-  type        = string
-  default     = "https://github.com/Krish-venom/aws-capstone-exam.git"
+variable "app_repo_url"  {
+  type    = string
+  default = "https://github.com/Krish-venom/aws-capstone-exam.git"
 }
+# Controls which version Ansible deploys (can be overridden from Jenkins)
+variable "app_src_version" { type = string default = "app/v1" }
 
-variable "app_src_version" {
-  description = "Which app version to deploy using Ansible (app/v1 or app/v2)"
-  type        = string
-  default     = "app/v1"
-}
-
-variable "db_username" {
-  description = "RDS database master username"
-  type        = string
-  default     = "streamline_admin"
-}
-
-variable "db_name" {
-  description = "Initial database name"
-  type        = string
-  default     = "employees"
-}
+# DB settings (username/dbname); password is generated
+variable "db_username"   { type = string  default = "streamline_admin" }
+variable "db_name"       { type = string  default = "employees" }
 
 ############################################
-# Providers & Data
+# Provider
 ############################################
-provider "aws" {
-  region = var.region
-}
+provider "aws" { region = var.region }
 
-data "aws_availability_zones" "available" {
-  state = "available"
-}
+############################################
+# Data Sources
+############################################
+data "aws_availability_zones" "available" { state = "available" }
 
 # Ubuntu 22.04 LTS AMI (Canonical)
-
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
-
+  filter { name = "name"                values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"] }
+  filter { name = "virtualization-type" values = ["hvm"] }
+}
 
 ############################################
-# Network: VPC, Subnets, Routes
+# Networking: VPC, Subnets, IGW, Routes
 ############################################
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
@@ -171,10 +119,7 @@ resource "aws_subnet" "private" {
 
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
-  route {
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.igw.id
-  }
+  route { cidr_block = "0.0.0.0/0"  gateway_id = aws_internet_gateway.igw.id }
   tags = { Name = "${var.project}-public-rt", Project = var.project }
 }
 
@@ -198,36 +143,33 @@ resource "aws_route_table_association" "private_assoc" {
 ############################################
 # Security Groups
 ############################################
+# ALB: HTTP 80 from anywhere
 resource "aws_security_group" "alb_sg" {
   name        = "${var.project}-alb-sg"
   description = "ALB security group"
   vpc_id      = aws_vpc.main.id
-
-  ingress { description = "HTTP from Internet" from_port = 80 to_port = 80 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
-  egress  { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
-
+  ingress { from_port = 80 to_port = 80 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
+  egress  { from_port = 0  to_port = 0  protocol = "-1"  cidr_blocks = ["0.0.0.0/0"] }
   tags = { Name = "${var.project}-alb-sg", Project = var.project }
 }
 
+# Web: HTTP 80 from anywhere; SSH 22 only from your IP
 resource "aws_security_group" "web_sg" {
   name        = "${var.project}-web-sg"
   description = "Web servers security group"
   vpc_id      = aws_vpc.main.id
-
-  ingress { description = "HTTP from Internet" from_port = 80 to_port = 80 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
-  ingress { description = "SSH from my IP"     from_port = 22 to_port = 22 protocol = "tcp" cidr_blocks = [var.my_ip_cidr] }
-  egress  { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
-
+  ingress { from_port = 80 to_port = 80 protocol = "tcp" cidr_blocks = ["0.0.0.0/0"] }
+  ingress { from_port = 22 to_port = 22 protocol = "tcp" cidr_blocks = [var.my_ip_cidr] }
+  egress  { from_port = 0  to_port = 0  protocol = "-1"  cidr_blocks = ["0.0.0.0/0"] }
   tags = { Name = "${var.project}-web-sg", Project = var.project }
 }
 
+# RDS: allow MySQL only from Web SG
 resource "aws_security_group" "rds_sg" {
   name        = "${var.project}-rds-sg"
   description = "RDS security group"
   vpc_id      = aws_vpc.main.id
-
   egress { from_port = 0 to_port = 0 protocol = "-1" cidr_blocks = ["0.0.0.0/0"] }
-
   tags = { Name = "${var.project}-rds-sg", Project = var.project }
 }
 
@@ -242,7 +184,7 @@ resource "aws_security_group_rule" "rds_mysql_ingress" {
 }
 
 ############################################
-# Key Pair (Generate and save locally)
+# SSH Key Pair (generate and save locally)
 ############################################
 resource "tls_private_key" "ec2" {
   algorithm = "RSA"
@@ -262,7 +204,7 @@ resource "local_file" "private_key_pem" {
 }
 
 ############################################
-# EC2 Web Servers (x2) + ALB
+# Compute: EC2 x2 in public subnets
 ############################################
 resource "aws_instance" "web" {
   count                       = 2
@@ -287,13 +229,15 @@ resource "aws_instance" "web" {
   }
 }
 
+############################################
+# Load Balancer: ALB + Target Group + Listener
+############################################
 resource "aws_lb" "app" {
   name               = "${var.project}-alb"
   load_balancer_type = "application"
   internal           = false
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = [for s in aws_subnet.public : s.id]
-
   tags = { Name = "${var.project}-alb", Project = var.project }
 }
 
@@ -302,7 +246,6 @@ resource "aws_lb_target_group" "web_tg" {
   port     = 80
   protocol = "HTTP"
   vpc_id   = aws_vpc.main.id
-
   health_check {
     path                = "/"
     matcher             = "200-399"
@@ -311,7 +254,6 @@ resource "aws_lb_target_group" "web_tg" {
     healthy_threshold   = 2
     unhealthy_threshold = 2
   }
-
   tags = { Project = var.project }
 }
 
@@ -326,14 +268,11 @@ resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.app.arn
   port              = 80
   protocol          = "HTTP"
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.web_tg.arn
-  }
+  default_action { type = "forward" target_group_arn = aws_lb_target_group.web_tg.arn }
 }
 
 ############################################
-# RDS: MySQL in private subnets
+# Database: RDS MySQL in private subnets
 ############################################
 resource "aws_db_subnet_group" "db_subnets" {
   name       = "${var.project}-db-subnets"
@@ -369,7 +308,9 @@ resource "aws_db_instance" "mysql" {
 }
 
 ############################################
-# Auto-generate Ansible files from live TF values
+# Ansible Autogeneration (no hardcoded values)
+# - Writes inventory, vars, playbook, role, template
+# - Jenkins will run Ansible using these files
 ############################################
 locals {
   ansible_dir = "${path.module}/../ansible"
@@ -500,30 +441,16 @@ locals {
     echo "Database Connected Successfully";
     $mysqli->close();
   PHP
-
-  deploy_sh = <<-SH
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "$(dirname "$0")"
-    KEY="../terraform/generated_${var.project}_key.pem"
-    echo "Using key: $KEY"
-    ansible -i hosts.ini all -m ping -u ubuntu --key-file "$KEY"
-    ansible-playbook -i hosts.ini site.yml -u ubuntu --key-file "$KEY"
-  SH
 }
 
 # Ensure ansible directories exist
 resource "null_resource" "prepare_ansible_dirs" {
   provisioner "local-exec" {
-    command = <<-CMD
-      mkdir -p "${local.ansible_dir}/group_vars" \
-               "${local.ansible_dir}/roles/web/tasks" \
-               "${local.ansible_dir}/roles/web/templates"
-    CMD
+    command = "mkdir -p '${local.ansible_dir}/group_vars' '${local.ansible_dir}/roles/web/tasks' '${local.ansible_dir}/roles/web/templates'"
   }
 }
 
-# Write files
+# Write Ansible files
 resource "local_file" "ansible_hosts" {
   depends_on = [null_resource.prepare_ansible_dirs, aws_instance.web]
   filename   = "${local.ansible_dir}/hosts.ini"
@@ -566,13 +493,6 @@ resource "local_file" "role_template_dbcheck" {
   file_permission = "0644"
 }
 
-resource "local_file" "deploy_script" {
-  depends_on = [null_resource.prepare_ansible_dirs, local_file.ansible_hosts]
-  filename   = "${local.ansible_dir}/deploy.sh"
-  content    = trim(local.deploy_sh)
-  file_permission = "0755"
-}
-
 ############################################
 # Outputs
 ############################################
@@ -584,12 +504,6 @@ output "web_public_ips"   { value = [for i in aws_instance.web : i.public_ip] }
 output "rds_endpoint"     { value = aws_db_instance.mysql.address }
 output "db_username"      { value = aws_db_instance.mysql.username }
 output "db_name"          { value = aws_db_instance.mysql.db_name }
-
-output "db_password" {
-  value     = random_password.db_password.result
-  sensitive = true
-}
-
-# Path to generated SSH private key (use for Ansible/Jenkins)
+output "db_password"      { value = random_password.db_password.result  sensitive = true }
 output "ec2_key_name"     { value = aws_key_pair.ec2_key.key_name }
 output "private_key_path" { value = local_file.private_key_pem.filename }
